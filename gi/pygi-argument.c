@@ -1602,8 +1602,8 @@ _pygi_argument_to_object (GArgument  *arg,
             break;
         }
         case GI_TYPE_TAG_ERROR:
-            /* Errors should be handled in the invoke wrapper. */
-            g_assert_not_reached();
+            object = Py_None;
+            Py_INCREF(object);
     }
 
     return object;
