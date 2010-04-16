@@ -1162,12 +1162,6 @@ _pygi_argument_to_object (GArgument  *arg,
                 /* Raw Python objects are passed to void* args */
                 g_warn_if_fail(transfer == GI_TRANSFER_NOTHING);
                 object = arg->v_pointer;
-
-                /* Do some sanity checks to ensure this is a real pyobject */
-                long ref_cnt = ((PyObject*)object)->ob_refcnt;                
-                if (ref_cnt < 1 || ref_cnt > 1000)
-                    object = Py_None;
-
             } else
                 object = Py_None;
             Py_XINCREF(object);

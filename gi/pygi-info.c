@@ -574,11 +574,6 @@ _wrap_g_function_info_invoke (PyGIBaseInfo *self,
             args_is_auxiliary[destroy_notify_index] = TRUE;
             n_aux_in_args += 1;
         }
-
-        if (user_data_index != G_MAXUINT8) {
-            args_is_auxiliary[user_data_index] = TRUE;
-            n_aux_in_args += 1;
-        }
     }
 
     if (is_method) {
@@ -589,6 +584,7 @@ _wrap_g_function_info_invoke (PyGIBaseInfo *self,
     /* We do a first (well, second) pass here over the function to scan for special cases.
      * This is currently array+length combinations and GError.
      */
+    g_print("Function: %s\n", g_base_info_get_name(self->info));
     for (i = 0; i < n_args; i++) {
         GIDirection direction;
         GITransfer transfer;
@@ -596,6 +592,8 @@ _wrap_g_function_info_invoke (PyGIBaseInfo *self,
 
         arg_infos[i] = g_callable_info_get_arg((GICallableInfo *)self->info, i);
         arg_type_infos[i] = g_arg_info_get_type(arg_infos[i]);
+        
+        g_print("Arg[%d] = %s (%p)\n", i, g_base_info_get_name(arg_infos[i]), arg_infos[i]);
 
         direction = g_arg_info_get_direction(arg_infos[i]);
         transfer = g_arg_info_get_ownership_transfer(arg_infos[i]);
@@ -834,10 +832,11 @@ _wrap_g_function_info_invoke (PyGIBaseInfo *self,
 
             if (i == callback_index) {
                 args[i]->v_pointer = closure->closure;
-                py_args_pos ++;
+                py_args_pos++;
                 continue;
             } else if (i == user_data_index) {
                 args[i]->v_pointer = closure;
+                py_args_pos++;
                 continue;
             } else if (i == destroy_notify_index) {
                 args[i]->v_pointer = _pygi_destroy_notify_create();

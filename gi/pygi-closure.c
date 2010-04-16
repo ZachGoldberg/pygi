@@ -39,14 +39,18 @@ _pygi_closure_handle (ffi_cif *cif,
     PyGICClosure *closure = data;
     gint n_args, i;
     GIArgInfo  *arg_info;
+    GIDirection arg_direction;
     GITypeInfo *arg_type;
     GITransfer arg_transfer;
+    GITypeTag  arg_tag;
     GITypeTag  return_tag;
     GITransfer return_transfer;
     GITypeInfo *return_type;
     PyObject *retval;
     PyObject *py_args;
     PyObject *pyarg;
+    gint n_in_args, n_out_args;
+
 
     /* Lock the GIL as we are coming into this code without the lock and we
       may be executing python code */
@@ -63,22 +67,62 @@ _pygi_closure_handle (ffi_cif *cif,
         goto end;
     }
 
+    n_in_args = 0;
+    n_out_args = 0;
+
     for (i = 0; i < n_args; i++) {
         arg_info = g_callable_info_get_arg (closure->info, i);
         arg_type = g_arg_info_get_type (arg_info);
         arg_transfer = g_arg_info_get_ownership_transfer(arg_info);
-
-        pyarg = _pygi_argument_to_object (args[i],
-                                          arg_type,
-                                          arg_transfer);
-
-        PyTuple_SetItem(py_args, i, pyarg);
-        g_base_info_unref((GIBaseInfo*)arg_info);
-        g_base_info_unref((GIBaseInfo*)arg_type);
+        arg_tag = g_type_info_get_tag(arg_type);
+        arg_direction = g_arg_info_get_direction(arg_info);
+        g_print("Arg: Name: %s, %p\n", g_base_info_get_name(arg_info), arg_info);
+        g_print("Tag: %d\n", arg_tag);
+               
+             
+        switch (arg_tag){
+            case GI_TYPE_TAG_VOID:
+                {
+                    if (g_type_info_is_pointer(arg_type)) {
+                        PyTuple_SetItem(py_args, i, closure->user_data);
+                        n_in_args++;
+                        g_print("Skipping because we had %p!\n", closure->user_data);
+                        continue;
+                    }
+                }
+            case GI_TYPE_TAG_ERROR:
+                 {
+                     if (arg_direction == GI_DIRECTION_OUT){
+                         n_out_args++;
+                         break;
+                     }else if(arg_direction == GI_DIRECTION_INOUT){
+                         n_out_args++;
+                     }
+                 }
+            default:
+                {
+                    n_in_args++;
+                    pyarg = _pygi_argument_to_object (args[i],
+                                                      arg_type,
+                                                      arg_transfer);
+                    
+                    PyTuple_SetItem(py_args, i, pyarg);
+                    g_base_info_unref((GIBaseInfo*)arg_info);
+                    g_base_info_unref((GIBaseInfo*)arg_type);                                    
+                }
+        }
+        
     }
-
+    
+    _PyTuple_Resize (&py_args, n_in_args);
 
     retval = PyObject_CallObject((PyObject *)closure->function, py_args);
+
+    /*
+      If python exception occured
+       and we have an out gerror
+       then make new GIOError with string from python excpetion
+    */
 
     Py_DECREF(py_args);
 
@@ -267,6 +311,7 @@ _pygi_create_c_closure (PyGIBaseInfo  *function_info,
     guint8 i, py_argv_pos;
     ffi_closure *fficlosure;
     PyGICClosure *closure;
+    PyObject *py_user_data;
 
     /* Begin by cleaning up old async functions */
     g_slist_foreach(async_free_list, (GFunc)_pygi_callback_invoke_closure_free, NULL);
@@ -285,20 +330,21 @@ _pygi_create_c_closure (PyGIBaseInfo  *function_info,
     /* Find the Python function passed for the callback */
     found_py_function = FALSE;
     py_function = Py_None;
-
+    py_user_data = NULL;
+    
     /* if its a method then we need to skip over 'function_info' */
     if (is_method)
         py_argv_pos = 1;
     else
         py_argv_pos = 0;
-       
     for (i = 0; i < n_args && i < py_argc; i++) {
         if (i == callback_index) {
             py_function = PyTuple_GetItem(py_argv, py_argv_pos);
             found_py_function = TRUE;
-            break;
-        } else if (i == user_data_index
-                   || i == destroy_notify_index) {
+            continue;
+        } else if (i == user_data_index){
+            py_user_data = PyTuple_GetItem(py_argv, py_argv_pos);
+        }else if (i == destroy_notify_index) {
             continue;
         }
         py_argv_pos++;
@@ -316,14 +362,18 @@ _pygi_create_c_closure (PyGIBaseInfo  *function_info,
 
 
     /** Now actually build the closure **/
-    Py_INCREF(py_function);
 
     /* Build the closure itfunction_info */
     *closure_out = g_slice_new0(PyGICClosure);
     closure = *closure_out;
     closure->info = (GICallableInfo *) g_base_info_ref ((GIBaseInfo *) callback_info);  
     closure->function = py_function;
-    
+    closure->user_data = py_user_data;
+
+    Py_INCREF(py_function);
+    if (closure->user_data)
+        Py_INCREF(closure->user_data);
+
     fficlosure =
         g_callable_info_prepare_closure (callback_info, &closure->cif, _pygi_closure_handle,
                                          closure);

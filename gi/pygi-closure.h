@@ -38,6 +38,8 @@ typedef struct _PyGICClosure
     ffi_cif cif;
  
     GIScopeType scope;
+
+    PyObject* user_data;
 } PyGICClosure; 
  
 void _pygi_closure_handle(ffi_cif *cif, void *result, void
