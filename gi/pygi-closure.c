@@ -88,7 +88,12 @@ _pygi_closure_handle (ffi_cif *cif,
                 }
             case GI_TYPE_TAG_ERROR:
                  {
-                     continue;
+                     if (arg_direction == GI_DIRECTION_OUT){
+                         n_out_args++;
+                         break;
+                     }else if(arg_direction == GI_DIRECTION_INOUT){
+                         n_out_args++;
+                     }
                  }
             default:
                 {
@@ -114,6 +119,12 @@ _pygi_closure_handle (ffi_cif *cif,
     }
 
     retval = PyObject_CallObject((PyObject *)closure->function, py_args);
+
+    /*
+      If python exception occured
+       and we have an out gerror
+       then make new GIOError with string from python excpetion
+    */
 
     Py_DECREF(py_args);
 
